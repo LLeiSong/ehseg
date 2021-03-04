@@ -1,0 +1,422 @@
+import os
+import sys
+import gdal
+import rasterio
+import cv2 as cv
+import datetime as dt
+import numpy as np
+from skimage.filters import sobel, scharr, \
+    roberts, prewitt, laplace, gaussian, \
+    threshold_local
+from skimage.morphology import skeletonize, \
+    thin, medial_axis
+from sklearn.preprocessing import MinMaxScaler
+
+
+def gdal_save_file_tif_1bands(out_path, array,
+                              gdal_type, transform,
+                              projection, num_rows,
+                              num_cols, nodata):
+    """Save one-band imagery
+    Args:
+        out_path (str): full outputted path.
+        array (numpy.ndarray): numpy array to be saved.
+        gdal_type (int): gdal type defined by gdal.
+        transform (tuple): transform coefficients.
+        projection (str): projection.
+        num_rows (int): the number of rows.
+        num_cols (int): the number of columns.
+        nodata (int or float): the value of nodata.
+    Returns:
+        bool: True if succeed, otherwise False.
+    """
+    outdriver = gdal.GetDriverByName("GTiff")
+    outdata = outdriver.Create(out_path, num_rows, num_cols, 1, gdal_type)
+    if outdata is None:
+        return False
+    outband = outdata.GetRasterBand(1)
+    outband.SetNoDataValue(nodata)
+    outband.WriteArray(array)
+    outdata.FlushCache()
+    outdata.SetGeoTransform(transform)
+    outdata.FlushCache()
+    outdata.SetProjection(projection)
+    outdata.FlushCache()
+    outdata = None
+    return True
+
+
+def cal_emb_egm(img_array):
+    """A function to calculate ensemble (mean) of
+    different edge gradient magnitude
+    The methods: sobel, scharr, roberts,
+    prewitt, laplace, and laplace gaussian
+    Args:
+        img_array (numpy.ndarray): the image array
+    Returns:
+        numpy.ndarray: the mean of edge gradient magnitudes
+    """
+    img_sobel = sobel(img_array)
+    img_scharr = scharr(img_array)
+    img_roberts = roberts(img_array)
+    img_prewitt = prewitt(img_array)
+    img_laplac = laplace(img_array)
+    img_laplac_gauss = laplace(gaussian(img_array))
+    img_egm_mean = np.mean([img_sobel, img_scharr,
+                            img_roberts, img_prewitt,
+                            img_laplac, img_laplac_gauss], axis=0)
+    # img_egm_max = np.maximum.reduce([img_sobel, img_scharr,
+    #                                  img_roberts, img_prewitt,
+    #                                  img_laplac, img_laplac_gauss])
+    return img_egm_mean
+
+
+def cal_accum_egm(img_array,
+                  n_iter=5,
+                  max_window=15):
+    """A function to calculate edge gradient magnitude
+    Args:
+        img_array (numpy.ndarray): the image array read by rasterio.
+            This input should be [B, G, R, NIR].
+        n_iter (int): the number of iteration for meanshift.
+        max_window (int): the maximum window size for meanshift loop.
+    Returns:
+        numpy.ndarray: the mean of edge gradient magnitudes
+    """
+    # Get channels, cols, rows and bands
+    [_, cols, rows] = img_array.shape
+    b1, b2, b3, b4 = img_array
+
+    # Calculate vegetation indices as added variables
+    # NDVI and SAVI for commonly usage
+    ndvi = (b4 - b3) / (b4 + b3)
+    savi = ((b4 - b3) / (b4 + b3 + 1)) * 2
+
+    # Step 1
+    # Use meanshift algorithm with n iterations to smooth image and filter out noise
+    for i in range(n_iter):
+        # Scale to int8 for opencv processing
+        scaler = MinMaxScaler(feature_range=(0, 255))
+        # Get min and max
+        b1_norm = scaler.fit_transform(b1.astype(np.float64).reshape(cols * rows, 1)).astype(np.uint8)
+        b2_norm = scaler.fit_transform(b2.astype(np.float64).reshape(cols * rows, 1)).astype(np.uint8)
+        b3_norm = scaler.fit_transform(b3.astype(np.float64).reshape(cols * rows, 1)).astype(np.uint8)
+        b4_norm = scaler.fit_transform(b4.astype(np.float64).reshape(cols * rows, 1)).astype(np.uint8)
+        ndvi_norm = scaler.fit_transform(ndvi.astype(np.float64).reshape(cols * rows, 1)).astype(np.uint8)
+        savi_norm = scaler.fit_transform(savi.astype(np.float64).reshape(cols * rows, 1)).astype(np.uint8)
+
+        # keep records for min and max for original bands
+        b1_min, b1_max = np.min(b1), np.max(b1)
+        b2_min, b2_max = np.min(b2), np.max(b2)
+        b3_min, b3_max = np.min(b3), np.max(b3)
+        b4_min, b4_max = np.min(b4), np.max(b4)
+        ndvi_min, ndvi_max = np.min(ndvi), np.max(ndvi)
+        savi_min, savi_max = np.min(savi), np.max(savi)
+
+        rgb_norm = cv.merge([b1_norm.reshape(cols, rows),
+                             b2_norm.reshape(cols, rows),
+                             b3_norm.reshape(cols, rows)])
+
+        veg_norm = cv.merge([b4_norm.reshape(cols, rows),
+                             ndvi_norm.reshape(cols, rows),
+                             savi_norm.reshape(cols, rows)])
+
+        # Apply Meanshift filter in two groups of bands
+        rgb_ms = cv.pyrMeanShiftFiltering(rgb_norm, max_window - i, max_window - i,
+                                          termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
+                                                    1, max_window - i))
+        veg_ms = cv.pyrMeanShiftFiltering(veg_norm, max_window - i, max_window - i,
+                                          termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
+                                                    1, max_window - i))
+
+        # Get each bands and convert to original range (i.e., original band data range)
+        b1_ms, b2_ms, b3_ms = cv.split(rgb_ms)
+        b4_ms, ndvi_ms, savi_ms = cv.split(veg_ms)
+        b1 = MinMaxScaler(feature_range=(b1_min, b1_max)).\
+            fit_transform(b1_ms.reshape(cols * rows, 1).astype(np.float32)).\
+            reshape(cols, rows)
+        b2 = MinMaxScaler(feature_range=(b2_min, b2_max)).\
+            fit_transform(b2_ms.reshape(cols * rows, 1).astype(np.float32)).\
+            reshape(cols, rows)
+        b3 = MinMaxScaler(feature_range=(b3_min, b3_max)).\
+            fit_transform(b3_ms.reshape(cols * rows, 1).astype(np.float32)).\
+            reshape(cols, rows)
+        b4 = MinMaxScaler(feature_range=(b4_min, b4_max)).\
+            fit_transform(b4_ms.reshape(cols * rows, 1).astype(np.float32)).\
+            reshape(cols, rows)
+        ndvi = MinMaxScaler(feature_range=(ndvi_min, ndvi_max)).\
+            fit_transform(ndvi_ms.reshape(cols * rows, 1).astype(np.float32)).\
+            reshape(cols, rows)
+        savi = MinMaxScaler(feature_range=(savi_min, savi_max)).\
+            fit_transform(savi_ms.reshape(cols * rows, 1).astype(np.float32)).\
+            reshape(cols, rows)
+
+    # Step 2
+    # EGM calculation using different edge detection convolution kernels
+    # laplacian, laplacian of gaussian, freichen, sobel, prewitt, roberts
+    b1_egm = cal_emb_egm(b1)
+    b2_egm = cal_emb_egm(b2)
+    b3_egm = cal_emb_egm(b3)
+    b4_egm = cal_emb_egm(b4)
+    ndvi_egm = cal_emb_egm(ndvi)
+    savi_egm = cal_emb_egm(savi)
+    egm_mean = np.mean([b1_egm, b2_egm, b3_egm,
+                        b4_egm, ndvi_egm, savi_egm], axis=0)
+    return egm_mean, [b1, b2, b3, b4, ndvi, savi]
+
+
+def edge_highlight(img_array,
+                   n_iter=11, max_window=15,
+                   window_size_thred=101):
+    """A function to highlight the edges of an image
+    Args:
+        img_array (numpy.ndarray): the image array read by rasterio.
+            This input should be [B, G, R, NIR].
+        n_iter (int): the iteration number for cal_accum_egm.
+        max_window (int): the maximum window size for cal_accum_egm.
+        window_size_thred (int): the size of window to get adaptive threshold.
+    Returns:
+        numpy.ndarray: the skeleton of edges
+    """
+    start_dt = dt.datetime.now()
+    print("Single edge highlight start: {}".format(start_dt))
+    egm, img_ms = cal_accum_egm(img_array, n_iter=n_iter,
+                                max_window=max_window)
+    threds = threshold_local(egm, window_size_thred)
+    skl_adp = skeletonize(egm > threds, method='lee')
+    skl_adp = thin(skl_adp)
+    skl_adp = medial_axis(skl_adp)
+    print("Single edge highlight end: {}".
+          format(dt.datetime.now() - start_dt))
+    return np.transpose(np.dstack(img_ms), (2, 0, 1)) * (1 - skl_adp)
+
+
+def edge_highlight_2s(img1_array,
+                      img2_array,
+                      n_iter=11, max_window=15,
+                      window_size_thred=101,
+                      method='mean'):
+    """A function to highlight the edges based on double images.
+    The images are usually the combination of growing season and off
+    season image.
+    Args:
+        img1_array (numpy.ndarray): the image array read by rasterio.
+            This input should be [B, G, R, NIR].
+        img2_array (numpy.ndarray): the image array read by rasterio.
+            This input should be [B, G, R, NIR].
+        n_iter (int): the iteration number for cal_accum_egm.
+        max_window (int): the maximum window size for cal_accum_egm.
+        window_size_thred (int): the size of window to get adaptive threshold.
+        method (str); method to get edges. ['mean', 'separate']
+            "mean" to take the mean of gs and os;
+            "separate" to get edges from gs and os separately;
+    Returns:
+        numpy.ndarray: the skeleton of edges
+    """
+    if method == 'mean':
+        # Calculate the skeleton of the objects.
+        start_dt = dt.datetime.now()
+        print("Mean edge highlight start: {}".format(start_dt))
+        egm_os, img1_ms = cal_accum_egm(img1_array, n_iter=n_iter,
+                                        max_window=max_window)
+        egm_gs, img2_ms = cal_accum_egm(img2_array, n_iter=n_iter,
+                                        max_window=max_window)
+        egm_s_mean = np.mean([egm_os, egm_gs], axis=0)
+        threds = threshold_local(egm_s_mean, window_size_thred)
+        skl_adp = skeletonize(egm_s_mean > threds, method='lee')
+        skl_adp = thin(skl_adp)
+        skl_adp = medial_axis(skl_adp)
+        print("Mean edge highlight end: {}".
+              format(dt.datetime.now() - start_dt))
+    elif method == 'separate':
+        start_dt = dt.datetime.now()
+        print("Separate edge highlight start: {}".format(start_dt))
+        egm_os, img1_ms = cal_accum_egm(img1_array, n_iter=n_iter,
+                                        max_window=max_window)
+        threds = threshold_local(egm_os, window_size_thred)
+        skl_adp_os = skeletonize(egm_os > threds, method='lee')
+        egm_gs, img2_ms = cal_accum_egm(img2_array, n_iter=n_iter,
+                                        max_window=max_window)
+        threds = threshold_local(egm_gs, window_size_thred)
+        skl_adp_gs = skeletonize(egm_gs > threds, method='lee')
+        skl_adp = skl_adp_os + skl_adp_gs
+        skl_adp = thin(skl_adp)
+        skl_adp = medial_axis(skl_adp)
+        print("Separate edge highlight end: {}".
+              format(dt.datetime.now() - start_dt))
+    else:
+        print('No such option, just mean or separate.')
+
+    return np.transpose(np.dstack(img1_ms), (2, 0, 1)) * (1 - skl_adp), \
+           np.transpose(np.dstack(img2_ms), (2, 0, 1)) * (1 - skl_adp)
+
+
+def ehseg(img_paths,
+          dst_path,
+          bands=[1, 2, 3, 4],
+          grassbin='/Applications/GRASS-7.9.app/Contents/MacOS/Grass.sh',  # for Mac
+          gisbase='/Applications/GRASS-7.9.app/Contents/Resources',  # for Mac
+          n_iter=5, max_window=15,
+          window_size_thred=101,
+          method='mean',
+          ram=8,
+          threshold=0.2,
+          similarity="manhattan",
+          minsize=10,
+          iterations=20,
+          vectorize=False):
+    """
+    Args:
+        img_paths (list or str): be a list of image paths
+            or a single image path.
+            One for single image, two for double images.
+        bands (list): the band index to read. Should be [B, G, R, NIR].
+        grassbin (str): the path of GRASS installation.
+        gisbase (str): the gisbase path of GRASS GIS.
+        dst_path (str): the destination path for outputs.
+        n_iter (int): the iteration number for edge_highlight or edge_highlight_2s.
+        max_window (int): the maximum window size for edge_highlight or edge_highlight_2s.
+        window_size_thred (int): the size of window to get adaptive threshold.
+            This is for edge_highlight or edge_highlight_2s.
+        method (str); method to get edges for edge_highlight_2s. ['mean', 'separate']
+            "mean" to take the mean of gs and os;
+            "separate" to get edges from gs and os separately;
+        ram (int): the number of RAM in G to use.
+        threshold (float): a threshold for segmentation, more details refers to i.segment GRASS manual.
+        similarity (str): the method to calculate similarity between segments. euclidean or manhattan.
+        minsize (int): the minimum size of segments.
+        iterations (int): number of iterations for segmentation algorithm to converge.
+        vectorize (bool): the option to vectorize the segments or not.
+    """
+    # Link GRASS GIS
+    os.environ['GISBASE'] = gisbase
+    os.environ['GRASSBIN'] = grassbin
+    gpydir = os.path.join(gisbase, "etc", "python")
+    sys.path.append(gpydir)
+    from grass_session import Session
+    import grass.script as gscript
+
+    if isinstance(img_paths, str):
+        print('Use single image.')
+        # Read images
+        with rasterio.open(img_paths, "r") as src:
+            img_array = src.read(bands)
+            meta = src.meta
+        # Calculate skeleton
+        img_hlt = edge_highlight(img_array, n_iter=n_iter,
+                                 max_window=max_window,
+                                 window_size_thred=window_size_thred)
+
+        # Save out skl for GRASS GIS
+        meta.update({'count': 6, 'dtype': 'float64'})
+        with rasterio.open(os.path.join(dst_path, 'img_hlt.tif'), 'w', **meta) as dst:
+            dst.write(img_hlt)
+
+        # Call GRASS GIS to do segmentation
+        with Session(gisdb=dst_path,
+                     location="ehseg",
+                     mapset='PERMANENT',
+                     create_opts="EPSG:{}".format(meta['crs'].to_epsg())):
+            gscript.run_command('r.in.gdal',
+                                input=os.path.join(dst_path, 'img_hlt.tif'),
+                                output='img_hlt',
+                                overwrite=True)
+            gscript.run_command('g.region', raster='img_hlt.1')
+            gscript.run_command('i.group',
+                                group='group',
+                                input='img_hlt.1,img_hlt.2,img_hlt.3,'
+                                      'img_hlt.4,img_hlt.5,img_hlt.6,')
+            gscript.run_command('i.segment',
+                                threshold=threshold,
+                                method="region_growing",
+                                similarity=similarity,
+                                minsize=minsize,
+                                memory=1024 * ram,  # 8G
+                                iterations=iterations,
+                                group="group",
+                                output='segments',
+                                goodness='goodness',
+                                overwrite=True)
+            gscript.run_command('r.out.gdal',
+                                flags='m',
+                                input='segments',
+                                output=os.path.join(dst_path, 'segments.tif'),
+                                overwrite=True)
+    elif isinstance(img_paths, str) and len(img_paths) == 2:
+        print('Use double image.')
+        # Read images
+        with rasterio.open(img_paths[0], "r") as src:
+            img1_array = src.read(bands)
+            meta = src.meta
+        with rasterio.open(img_paths[1], "r") as src:
+            img2_array = src.read(bands)
+        # Calculate skeleton
+        img1_hlt, img2_hlt = edge_highlight_2s(img1_array, img2_array,
+                                               n_iter=n_iter,
+                                               max_window=max_window,
+                                               window_size_thred=window_size_thred,
+                                               method=method)
+
+        # Save out skl for GRASS GIS
+        meta.update({'count': 6, 'dtype': 'float64'})
+        with rasterio.open(os.path.join(dst_path, 'img1_hlt.tif'), 'w', **meta) as dst:
+            dst.write(img1_hlt)
+        with rasterio.open(os.path.join(dst_path, 'img1_hlt.tif'), 'w', **meta) as dst:
+            dst.write(img2_hlt)
+
+        with Session(gisdb=dst_path,
+                     location="ehseg",
+                     mapset='PERMANENT',
+                     create_opts="EPSG:{}".format(meta['crs'].to_epsg())):
+            gscript.run_command('r.in.gdal',
+                                input=os.path.join(dst_path, 'img1_hlt.tif'),
+                                output='img1_hlt',
+                                overwrite=True)
+            gscript.run_command('r.in.gdal',
+                                input=os.path.join(dst_path, 'img2_hlt.tif'),
+                                output='img2_hlt',
+                                overwrite=True)
+            gscript.run_command('g.region', raster='img1_hlt.1')
+            gscript.run_command('i.group',
+                                group='group',
+                                input='img1_hlt.1,img1_hlt.2,img1_hlt.3,'
+                                      'img1_hlt.4,img1_hlt.5,img1_hlt.6,'
+                                      'img2_hlt.1,img2_hlt.2,img2_hlt.3,'
+                                      'img2_hlt.4,img2_hlt.5,img2_hlt.6')
+            gscript.run_command('i.segment',
+                                threshold=threshold,
+                                method="region_growing",
+                                similarity=similarity,
+                                minsize=minsize,
+                                memory=1024 * ram,  # 8G
+                                iterations=iterations,
+                                group="group",
+                                output='segments',
+                                goodness='goodness',
+                                overwrite=True)
+            gscript.run_command('r.out.gdal',
+                                flags='m',
+                                input='segments',
+                                output=os.path.join(dst_path, 'segments.tif'),
+                                overwrite=True)
+            if vectorize:
+                gscript.run_command('r.to.vect',
+                                    input='segments',
+                                    output='segments',
+                                    type='area',
+                                    overwrite=True)
+                gscript.run_command('v.out.ogr',
+                                    input='segments',
+                                    format='GeoJSON',
+                                    output=os.path.join(dst_path, 'segments.geojson'),
+                                    overwrite=True)
+
+    else:
+        sys.exit("Not valid image paths.")
+
+
+
+
+
+
+
