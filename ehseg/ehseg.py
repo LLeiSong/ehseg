@@ -1,6 +1,6 @@
 import os
 import sys
-import gdal
+import shutil
 import rasterio
 import cv2 as cv
 import datetime as dt
@@ -11,39 +11,6 @@ from skimage.filters import sobel, scharr, \
 from skimage.morphology import skeletonize, \
     thin, medial_axis
 from sklearn.preprocessing import MinMaxScaler
-
-
-def gdal_save_file_tif_1bands(out_path, array,
-                              gdal_type, transform,
-                              projection, num_rows,
-                              num_cols, nodata):
-    """Save one-band imagery
-    Args:
-        out_path (str): full outputted path.
-        array (numpy.ndarray): numpy array to be saved.
-        gdal_type (int): gdal type defined by gdal.
-        transform (tuple): transform coefficients.
-        projection (str): projection.
-        num_rows (int): the number of rows.
-        num_cols (int): the number of columns.
-        nodata (int or float): the value of nodata.
-    Returns:
-        bool: True if succeed, otherwise False.
-    """
-    outdriver = gdal.GetDriverByName("GTiff")
-    outdata = outdriver.Create(out_path, num_rows, num_cols, 1, gdal_type)
-    if outdata is None:
-        return False
-    outband = outdata.GetRasterBand(1)
-    outband.SetNoDataValue(nodata)
-    outband.WriteArray(array)
-    outdata.FlushCache()
-    outdata.SetGeoTransform(transform)
-    outdata.FlushCache()
-    outdata.SetProjection(projection)
-    outdata.FlushCache()
-    outdata = None
-    return True
 
 
 def cal_emb_egm(img_array):
@@ -72,8 +39,8 @@ def cal_emb_egm(img_array):
 
 
 def cal_accum_egm(img_array,
-                  n_iter=5,
-                  max_window=15):
+                  n_iter=3,
+                  max_window=11):
     """A function to calculate edge gradient magnitude
     Args:
         img_array (numpy.ndarray): the image array read by rasterio.
@@ -166,7 +133,7 @@ def cal_accum_egm(img_array,
 
 
 def edge_highlight(img_array,
-                   n_iter=11, max_window=15,
+                   n_iter=3, max_window=11,
                    window_size_thred=101):
     """A function to highlight the edges of an image
     Args:
@@ -193,7 +160,7 @@ def edge_highlight(img_array,
 
 def edge_highlight_2s(img1_array,
                       img2_array,
-                      n_iter=11, max_window=15,
+                      n_iter=3, max_window=11,
                       window_size_thred=101,
                       method='mean'):
     """A function to highlight the edges based on double images.
@@ -256,7 +223,7 @@ def ehseg(img_paths,
           bands=[1, 2, 3, 4],
           grassbin='/Applications/GRASS-7.9.app/Contents/MacOS/Grass.sh',  # for Mac
           gisbase='/Applications/GRASS-7.9.app/Contents/Resources',  # for Mac
-          n_iter=5, max_window=15,
+          n_iter=3, max_window=11,
           window_size_thred=101,
           method='mean',
           ram=8,
@@ -264,7 +231,8 @@ def ehseg(img_paths,
           similarity="manhattan",
           minsize=10,
           iterations=20,
-          vectorize=False):
+          vectorize=True,
+          keep=False):
     """
     Args:
         img_paths (list or str): be a list of image paths
@@ -287,6 +255,7 @@ def ehseg(img_paths,
         minsize (int): the minimum size of segments.
         iterations (int): number of iterations for segmentation algorithm to converge.
         vectorize (bool): the option to vectorize the segments or not.
+        keep (bool): the option to keep the intermediate results.
     """
     # Link GRASS GIS
     os.environ['GISBASE'] = gisbase
@@ -342,6 +311,17 @@ def ehseg(img_paths,
                                 input='segments',
                                 output=os.path.join(dst_path, 'segments.tif'),
                                 overwrite=True)
+            if vectorize:
+                gscript.run_command('r.to.vect',
+                                    input='segments',
+                                    output='segments',
+                                    type='area',
+                                    overwrite=True)
+                gscript.run_command('v.out.ogr',
+                                    input='segments',
+                                    format='GeoJSON',
+                                    output=os.path.join(dst_path, 'segments.geojson'),
+                                    overwrite=True)
     elif isinstance(img_paths, str) and len(img_paths) == 2:
         print('Use double image.')
         # Read images
@@ -410,9 +390,23 @@ def ehseg(img_paths,
                                     format='GeoJSON',
                                     output=os.path.join(dst_path, 'segments.geojson'),
                                     overwrite=True)
-
     else:
         sys.exit("Not valid image paths.")
+
+    # Clean the intermediate results
+    if not keep:
+        # edge highlight images
+        if os.path.isfile(os.path.join(dst_path, 'img_hlt.tif')):
+            os.remove(os.path.join(dst_path, 'img_hlt.tif'))
+        if os.path.isfile(os.path.join(dst_path, 'img1_hlt.tif')):
+            os.remove(os.path.join(dst_path, 'img1_hlt.tif'))
+        if os.path.isfile(os.path.join(dst_path, 'img2_hlt.tif')):
+            os.remove(os.path.join(dst_path, 'img2_hlt.tif'))
+        # GRASS GIS
+        try:
+            shutil.rmtree(os.path.join(dst_path, 'ehseg'))
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
 
 
 
