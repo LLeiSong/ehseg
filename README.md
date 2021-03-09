@@ -23,23 +23,41 @@ The function `ehseg` is the main function to do segmentation. Here is an example
 The user must install GRASS GIS first, and provide `GRASSBIN` and `gisbase`.
 
 ```
-img_paths = ['planet_medres_normalized_analytic_2017-12_2018-05_mosaic_1221-998.tif',
-             'planet_medres_normalized_analytic_2018-06_2018-11_mosaic_1221-998.tif']
-dst_path = '/Path/for/outputs'
+img_paths = ['planet_medres_normalized_analytic_2017-12_2018-05_mosaic_1219-998.tif',
+             'planet_medres_normalized_analytic_2018-06_2018-11_mosaic_1219-998.tif']
+dst_path = '/Users/leisong/downloads'
+opt_name = 'segments_1219-998'
 bands = [1, 2, 3, 4]
 grassbin = '/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh'  # for Mac
 gisbase = '/Applications/GRASS-7.8.app/Contents/Resources'  # for Mac
 n_iter = 3
-max_window = 11
+max_window = 5
 window_size_thred = 101
-method = 'mean'
+method = 'separate'
+ram = 16
 threshold = 0.2
 similarity = "manhattan"
 minsize = 10
-iterations = 20
-ehseg(img_paths, dst_path, bands, grassbin, gisbase,
-      n_iter, max_window, window_size_thred, method,
-      threshold, similarity. minsize. iterations)
+iterations = 200
+vectorize = True
+keep = False
+
+ehseg(img_paths=img_paths,
+      dst_path=dst_path,
+      opt_name=opt_name,
+      bands=bands,
+      grassbin=grassbin,  # for Mac
+      gisbase=gisbase,  # for Mac
+      n_iter=n_iter, max_window=max_window,
+      window_size_thred=window_size_thred,
+      method=method,
+      ram=ram,
+      threshold=threshold,
+      similarity=similarity,
+      minsize=minsize,
+      iterations=iterations,
+      vectorize=vectorize,
+      keep=keep)
 ```
 
 You could check more details about the arguments from function help documentation.
