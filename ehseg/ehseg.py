@@ -220,6 +220,7 @@ def edge_highlight_2s(img1_array,
 
 def ehseg(img_paths,
           dst_path,
+          opt_name='segments',
           bands=[1, 2, 3, 4],
           grassbin='/Applications/GRASS-7.9.app/Contents/MacOS/Grass.sh',  # for Mac
           gisbase='/Applications/GRASS-7.9.app/Contents/Resources',  # for Mac
@@ -238,6 +239,7 @@ def ehseg(img_paths,
         img_paths (list or str): be a list of image paths
             or a single image path.
             One for single image, two for double images.
+        opt_name (str): output name for segments.
         bands (list): the band index to read. Should be [B, G, R, NIR].
         grassbin (str): the path of GRASS installation.
         gisbase (str): the gisbase path of GRASS GIS.
@@ -309,7 +311,7 @@ def ehseg(img_paths,
             gscript.run_command('r.out.gdal',
                                 flags='m',
                                 input='segments',
-                                output=os.path.join(dst_path, 'segments.tif'),
+                                output=os.path.join(dst_path, '{}.tif'.format(opt_name)),
                                 overwrite=True)
             if vectorize:
                 gscript.run_command('r.to.vect',
@@ -320,9 +322,11 @@ def ehseg(img_paths,
                 gscript.run_command('v.out.ogr',
                                     input='segments',
                                     format='GeoJSON',
-                                    output=os.path.join(dst_path, 'segments.geojson'),
+                                    output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
                                     overwrite=True)
-    elif isinstance(img_paths, str) and len(img_paths) == 2:
+    elif isinstance(img_paths, list) and \
+            all(isinstance(elem, str) for elem in img_paths) and \
+            len(img_paths) == 2:
         print('Use double image.')
         # Read images
         with rasterio.open(img_paths[0], "r") as src:
@@ -341,7 +345,7 @@ def ehseg(img_paths,
         meta.update({'count': 6, 'dtype': 'float64'})
         with rasterio.open(os.path.join(dst_path, 'img1_hlt.tif'), 'w', **meta) as dst:
             dst.write(img1_hlt)
-        with rasterio.open(os.path.join(dst_path, 'img1_hlt.tif'), 'w', **meta) as dst:
+        with rasterio.open(os.path.join(dst_path, 'img2_hlt.tif'), 'w', **meta) as dst:
             dst.write(img2_hlt)
 
         with Session(gisdb=dst_path,
@@ -377,7 +381,7 @@ def ehseg(img_paths,
             gscript.run_command('r.out.gdal',
                                 flags='m',
                                 input='segments',
-                                output=os.path.join(dst_path, 'segments.tif'),
+                                output=os.path.join(dst_path, '{}.tif'.format(opt_name)),
                                 overwrite=True)
             if vectorize:
                 gscript.run_command('r.to.vect',
@@ -388,10 +392,11 @@ def ehseg(img_paths,
                 gscript.run_command('v.out.ogr',
                                     input='segments',
                                     format='GeoJSON',
-                                    output=os.path.join(dst_path, 'segments.geojson'),
+                                    output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
                                     overwrite=True)
     else:
-        sys.exit("Not valid image paths.")
+        print("Not valid image paths.")
+        sys.exit(-1)
 
     # Clean the intermediate results
     if not keep:
@@ -407,10 +412,3 @@ def ehseg(img_paths,
             shutil.rmtree(os.path.join(dst_path, 'ehseg'))
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
-
-
-
-
-
-
-
