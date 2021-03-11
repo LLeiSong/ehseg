@@ -45,10 +45,11 @@ def cal_accum_egm(img_array,
     Args:
         img_array (numpy.ndarray): the image array read by rasterio.
             This input should be [B, G, R, NIR].
-        n_iter (int): the number of iteration for meanshift.
-        max_window (int): the maximum window size for meanshift loop.
+        n_iter (int): the number of iteration for mean-shift.
+        max_window (int): the maximum window size for mean-shift loop.
     Returns:
-        numpy.ndarray: the mean of edge gradient magnitudes
+        numpy.ndarray, list (numpy.ndarray):
+            the mean of edge gradient magnitudes and the filtered bands
     """
     # Get channels, cols, rows and bands
     [_, cols, rows] = img_array.shape
@@ -60,7 +61,7 @@ def cal_accum_egm(img_array,
     savi = ((b4 - b3) / (b4 + b3 + 1)) * 2
 
     # Step 1
-    # Use meanshift algorithm with n iterations to smooth image and filter out noise
+    # Use mean-shift algorithm with n iterations to smooth image and filter out noise
     for i in range(n_iter):
         # Scale to int8 for opencv processing
         scaler = MinMaxScaler(feature_range=(0, 255))
@@ -88,7 +89,7 @@ def cal_accum_egm(img_array,
                              ndvi_norm.reshape(cols, rows),
                              savi_norm.reshape(cols, rows)])
 
-        # Apply Meanshift filter in two groups of bands
+        # Apply Mean-shift filter in two groups of bands
         rgb_ms = cv.pyrMeanShiftFiltering(rgb_norm, max_window - i, max_window - i,
                                           termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
                                                     1, max_window - i))
@@ -143,7 +144,7 @@ def edge_highlight(img_array,
         max_window (int): the maximum window size for cal_accum_egm.
         window_size_thred (int): the size of window to get adaptive threshold.
     Returns:
-        numpy.ndarray: the skeleton of edges
+        numpy.ndarray: the edge highlighted images
     """
     start_dt = dt.datetime.now()
     print("Single edge highlight start: {}".format(start_dt))
@@ -178,7 +179,7 @@ def edge_highlight_2s(img1_array,
             "mean" to take the mean of gs and os;
             "separate" to get edges from gs and os separately;
     Returns:
-        numpy.ndarray: the skeleton of edges
+        numpy.ndarray, numpy.ndarray: two edge-highlighted image stacks
     """
     if method == 'mean':
         # Calculate the skeleton of the objects.
@@ -240,7 +241,7 @@ def ehseg(img_paths,
             or a single image path.
             One for single image, two for double images.
         opt_name (str): output name for segments.
-        bands (list): the band index to read. Should be [B, G, R, NIR].
+        bands (list of int): the band index to read. Should be [B, G, R, NIR].
         grassbin (str): the path of GRASS installation.
         gisbase (str): the gisbase path of GRASS GIS.
         dst_path (str): the destination path for outputs.
@@ -248,7 +249,7 @@ def ehseg(img_paths,
         max_window (int): the maximum window size for edge_highlight or edge_highlight_2s.
         window_size_thred (int): the size of window to get adaptive threshold.
             This is for edge_highlight or edge_highlight_2s.
-        method (str); method to get edges for edge_highlight_2s. ['mean', 'separate']
+        method (str): method to get edges for edge_highlight_2s. ['mean', 'separate']
             "mean" to take the mean of gs and os;
             "separate" to get edges from gs and os separately;
         ram (int): the number of RAM in G to use.
@@ -302,7 +303,7 @@ def ehseg(img_paths,
                                 method="region_growing",
                                 similarity=similarity,
                                 minsize=minsize,
-                                memory=1024 * ram,  # 8G
+                                memory=1024 * ram,
                                 iterations=iterations,
                                 group="group",
                                 output='segments',
@@ -372,7 +373,7 @@ def ehseg(img_paths,
                                 method="region_growing",
                                 similarity=similarity,
                                 minsize=minsize,
-                                memory=1024 * ram,  # 8G
+                                memory=1024 * ram,
                                 iterations=iterations,
                                 group="group",
                                 output='segments',
