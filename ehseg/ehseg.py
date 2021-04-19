@@ -237,6 +237,7 @@ def ehseg(img_paths,
           minsize=10,
           iterations=20,
           vectorize=True,
+          simplify_thred=0.0,
           keep=False):
     """
     Args:
@@ -261,6 +262,9 @@ def ehseg(img_paths,
         minsize (int): the minimum size of segments.
         iterations (int): number of iterations for segmentation algorithm to converge.
         vectorize (bool): the option to vectorize the segments or not.
+        simplify_thred (float): the threshold of Douglas-Peucker Algorithm to simplify the vectorized segments.
+            If the segments will be used as interim output (e.g. get the edge of fields),
+            it is not a good idea to simplify them.
         keep (bool): the option to keep the intermediate results.
     """
     # Link GRASS GIS
@@ -323,11 +327,26 @@ def ehseg(img_paths,
                                     output='segments',
                                     type='area',
                                     overwrite=True)
-                gscript.run_command('v.out.ogr',
-                                    input='segments',
-                                    format='GeoJSON',
-                                    output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
-                                    overwrite=True)
+                # simplify the polygons
+                if simplify_thred > 0.0:
+                    gscript.run_command('v.generalize',
+                                        input='segments',
+                                        output='segments_dg',
+                                        method='douglas',
+                                        threshold=5,
+                                        overwrite=True)
+                    gscript.run_command('v.out.ogr',
+                                        input='segments_dg',
+                                        format='GeoJSON',
+                                        output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
+                                        overwrite=True)
+                else:
+                    gscript.run_command('v.out.ogr',
+                                        input='segments',
+                                        format='GeoJSON',
+                                        output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
+                                        overwrite=True)
+
     elif isinstance(img_paths, list) and \
             all(isinstance(elem, str) for elem in img_paths) and \
             len(img_paths) == 2:
@@ -389,15 +408,30 @@ def ehseg(img_paths,
                                 overwrite=True)
             if vectorize:
                 gscript.run_command('r.to.vect',
+                                    flags='s',
                                     input='segments',
                                     output='segments',
                                     type='area',
                                     overwrite=True)
-                gscript.run_command('v.out.ogr',
-                                    input='segments',
-                                    format='GeoJSON',
-                                    output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
-                                    overwrite=True)
+                # simplify the polygons
+                if simplify_thred > 0.0:
+                    gscript.run_command('v.generalize',
+                                        input='segments',
+                                        output='segments_dg',
+                                        method='douglas',
+                                        threshold=5,
+                                        overwrite=True)
+                    gscript.run_command('v.out.ogr',
+                                        input='segments_dg',
+                                        format='GeoJSON',
+                                        output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
+                                        overwrite=True)
+                else:
+                    gscript.run_command('v.out.ogr',
+                                        input='segments',
+                                        format='GeoJSON',
+                                        output=os.path.join(dst_path, '{}.geojson'.format(opt_name)),
+                                        overwrite=True)
     else:
         print("Not valid image paths.")
         sys.exit(-1)
