@@ -40,6 +40,7 @@ similarity = "manhattan"
 minsize = 10
 iterations = 200
 vectorize = True
+simplify_thred = 3.0
 keep = False
 
 ehseg(img_paths=img_paths,
@@ -57,6 +58,7 @@ ehseg(img_paths=img_paths,
       minsize=minsize,
       iterations=iterations,
       vectorize=vectorize,
+      simplify_thred=simplify_thred,
       keep=keep)
 ```
 
