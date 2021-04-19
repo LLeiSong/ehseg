@@ -2,11 +2,11 @@ import re
 import setuptools
 
 
-with open("sentinelPot/__init__.py", encoding="utf-8") as f:
+with open("ehseg/__init__.py", encoding="utf-8") as f:
     version = re.search(r"__version__\s*=\s*'(\S+)'", f.read()).group(1)
 
 setuptools.setup(
-    name="sentinelPot",
+    name="ehseg",
     version=version,
     url="https://github.com/LLeiSong/ehseg",
     author="Lei Song",

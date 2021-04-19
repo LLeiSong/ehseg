@@ -90,12 +90,15 @@ def cal_accum_egm(img_array,
                              savi_norm.reshape(cols, rows)])
 
         # Apply Mean-shift filter in two groups of bands
-        rgb_ms = cv.pyrMeanShiftFiltering(rgb_norm, max_window - i, max_window - i,
-                                          termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
-                                                    1, max_window - i))
-        veg_ms = cv.pyrMeanShiftFiltering(veg_norm, max_window - i, max_window - i,
-                                          termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
-                                                    1, max_window - i))
+        # rgb_ms = cv.pyrMeanShiftFiltering(rgb_norm, max_window - i, max_window - i,
+        #                                   termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
+        #                                             1, max_window - i))
+        # veg_ms = cv.pyrMeanShiftFiltering(veg_norm, max_window - i, max_window - i,
+        #                                   termcrit=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT,
+        #                                             1, max_window - i))
+
+        rgb_ms = cv.pyrMeanShiftFiltering(rgb_norm, max_window - i, max_window - i)
+        veg_ms = cv.pyrMeanShiftFiltering(veg_norm, max_window - i, max_window - i)
 
         # Get each bands and convert to original range (i.e., original band data range)
         b1_ms, b2_ms, b3_ms = cv.split(rgb_ms)
@@ -300,7 +303,7 @@ def ehseg(img_paths,
                                       'img_hlt.4,img_hlt.5,img_hlt.6,')
             gscript.run_command('i.segment',
                                 threshold=threshold,
-                                method="region_growing",
+                                method="region_growing",  # mean_shift
                                 similarity=similarity,
                                 minsize=minsize,
                                 memory=1024 * ram,
@@ -370,7 +373,7 @@ def ehseg(img_paths,
                                       'img2_hlt.4,img2_hlt.5,img2_hlt.6')
             gscript.run_command('i.segment',
                                 threshold=threshold,
-                                method="region_growing",
+                                method="region_growing",  # mean_shift
                                 similarity=similarity,
                                 minsize=minsize,
                                 memory=1024 * ram,
