@@ -13,7 +13,7 @@ It roughly has five steps and an optional step:
 3. Extract skeleton using adaptive threshold.
 4. Highlight the image using the skeleton.
 5. Run region_growing image segmentation from GRASS GIS to finish the segmentation.
-6 (Optional) simplify the segmentation polygons using Douglas-Peucker Algorithm.
+6. (Optional) simplify the segmentation polygons using Douglas-Peucker Algorithm.
 
 The method allows doing segmentation on one image, or a pair of images (e.g. growing-season image and off-season image).
 
