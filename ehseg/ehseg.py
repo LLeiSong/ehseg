@@ -3,6 +3,7 @@ import sys
 import shutil
 import rasterio
 import cv2 as cv
+import tempfile
 import datetime as dt
 import numpy as np
 from skimage.filters import sobel, scharr, \
@@ -450,3 +451,87 @@ def ehseg(img_paths,
             shutil.rmtree(os.path.join(dst_path, 'ehseg'))
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
+
+
+def revalue_segments(segments_path,
+                     categorical_mask_path,
+                     dst_epsg,
+                     category_filter=None,
+                     thred_clean=500,
+                     grassbin='/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh',  # for Mac
+                     gisbase='/Applications/GRASS-7.8.app/Contents/Resources',  # for Mac
+                     keep=False):
+    """
+    Args:
+        segments_path (str): path of segments. Should be a vector.
+        categorical_mask_path (str): path of mask image.
+        category_filter (None or list): the category values for filtering.
+        dst_epsg (int): the destination CRS in EPSG code.
+            E.g. 4326 for Geographic coordinate system.
+        thred_clean (int): threshold value in dst_epsg unit to clean the results.
+        grassbin (str): the path of GRASS installation.
+        gisbase (str): the gisbase path of GRASS GIS.
+        keep (bool): the option to keep the original segments or not.
+    Return:
+        Save out file. Within the attribute table, b_value is the resigned value for each segment.
+    """
+    # Link GRASS GIS
+    os.environ['GISBASE'] = gisbase
+    os.environ['GRASSBIN'] = grassbin
+    gpydir = os.path.join(gisbase, "etc", "python")
+    sys.path.append(gpydir)
+    from grass_session import Session
+    import grass.script as gscript
+
+    # Paths
+    dst_dir = tempfile.TemporaryDirectory(dir='.')
+    if keep:
+        dst_path = segments_path.replace('segments', 'segments_revalue')
+    else:
+        dst_path = segments_path
+    # Resign value of segments using GRASS GIS
+    with Session(gisdb=dst_dir.name,
+                 location="revalue_segments",
+                 mapset='PERMANENT',
+                 create_opts="EPSG:{}".format(dst_epsg)):
+        gscript.run_command('v.import',
+                            input=segments_path,
+                            output='segments',
+                            extent='input',
+                            overwrite=True)
+        gscript.run_command('r.import',
+                            input=categorical_mask_path,
+                            output='mask',
+                            extent='input',
+                            overwrite=True)
+        gscript.run_command('g.region', raster='mask')
+        gscript.run_command('r.null',
+                            map='mask',
+                            setnull=','.join([str(i) for i in category_filter]))
+        gscript.run_command('r.to.vect',
+                            flags='s',
+                            input='mask',
+                            output='mask',
+                            type='area',
+                            overwrite=True)
+        gscript.run_command('v.overlay',
+                            ainput='segments',
+                            binput='mask',
+                            operator='and',
+                            output='segments_resign')
+        gscript.run_command('v.clean',
+                            input='segments_resign',
+                            output='segments',
+                            error='segment_error',
+                            tool='rmarea',
+                            threshold=thred_clean,
+                            overwrite=True)
+        gscript.run_command('v.out.ogr',
+                            input='segments',
+                            format='GeoJSON',
+                            output=dst_path,
+                            overwrite=True)
+
+    # Clean temporary directory
+    dst_dir.cleanup()
+
