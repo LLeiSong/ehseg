@@ -17,8 +17,10 @@ It roughly has five steps and an optional step:
 
 The method allows doing segmentation on one image, or a pair of images (e.g. growing-season image and off-season image).
 
-### Usage
+Besides the segmentation, the package also includes function to resign values for each segment (e.g. based on land-cover types) and/or discard segments for specific value(s).
 
+### Usage
+#### Segmentation
 The function `ehseg` is the main function to do segmentation. Here is an example of how to use it:
 
 The user must install GRASS GIS first, and provide `GRASSBIN` and `gisbase`.
@@ -31,18 +33,18 @@ opt_name = 'segments_1219-998'
 bands = [1, 2, 3, 4]
 grassbin = '/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh'  # for Mac
 gisbase = '/Applications/GRASS-7.8.app/Contents/Resources'  # for Mac
-n_iter = 3
-max_window = 5
-window_size_thred = 101
-method = 'separate'
-ram = 16
-threshold = 0.2
-similarity = "manhattan"
-minsize = 10
-iterations = 200
-vectorize = True
-simplify_thred = 3.0
-keep = False
+n_iter = 3 # number of interation for iteratioanl mean-shift filter
+max_window = 5 # maximum window size for mean-shift filter
+window_size_thred = 101 # window size of local threshold calculation to skeletonize edges.
+method = 'separate' # method of segmentation using two season images.
+ram = 16 # RAM size for usage
+threshold = 0.2 # similarity threshold for segment growing.
+similarity = "manhattan" # method to calculate similarity.
+minsize = 10 # minimum segment size
+iterations = 200 # iteration number for segmentation. Too small value might cause uncoverage.
+vectorize = True # option to get vector polygons for segments. Otherwise, just keep the categorical raster.
+simplify_thred = 3.0 # threshold for vector simplification.
+keep = False # option to keep intermid results or not.
 
 ehseg(img_paths=img_paths,
       dst_path=dst_path,
@@ -64,6 +66,31 @@ ehseg(img_paths=img_paths,
 ```
 
 You could check more details about the arguments from function help documentation.
+
+#### Post-segmentation
+
+The function `revalue_segments` can resign values for each segment and/or filter segments based on user-defined values.
+Similarly, the user must install GRASS GIS first, and provide `GRASSBIN` and `gisbase`.
+
+```
+segments_path = 'segments_1218-998_window7.geojson' # path of segments
+categorical_mask_path = 'probability_1218-998.tif' # path of categorical mask raster.
+dst_epsg = 4326 # destenation EPSG code
+category_filter = [0] # values in categorical mask to discard.
+thred_clean = 500 # threshold of area size to clean.
+grassbin = '/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh'  # for Mac
+gisbase = '/Applications/GRASS-7.8.app/Contents/Resources'  # for Mac
+keep = True # option to replace input segments path or not.
+
+revalue_segments(segments_path=segments_path,
+                 categorical_mask_path=categorical_mask_path,
+                 dst_epsg=dst_epsg,
+                 category_filter=category_filter,
+                 thred_clean=thred_clean,
+                 grassbin=grassbin,
+                 gisbase=gisbase,
+                 keep=keep)
+```
 
 ### Acknowledgement
 
