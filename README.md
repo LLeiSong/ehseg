@@ -19,6 +19,14 @@ The method allows doing segmentation on one image, or a pair of images (e.g. gro
 
 Besides the segmentation, the package also includes function to resign values for each segment (e.g. based on land-cover types) and/or discard segments for specific value(s).
 
+### Installation
+
+```
+git clone https://github.com/LLeiSong/ehseg.git
+cd ehseg
+pip install .
+```
+
 ### Usage
 #### Segmentation
 The function `ehseg` is the main function to do segmentation. Here is an example of how to use it:
