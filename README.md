@@ -26,6 +26,14 @@ git clone https://github.com/LLeiSong/ehseg.git
 cd ehseg
 pip install .
 ```
+**Warning**
+
+Due to the bug of supporting macOS in `grass-session`, it cannot set gisbase correctly.
+So before package `grass-session` gets updated, macOS users have to do an extra manual makeup step. 
+After installing `ehseg`, go to `venv/libs/python3.*/site-packages/grass-session` (
+or other equivalent path), then edit file session.py:
+
+*Comment line 144 `gisbase = out.decode().strip()` and add this line instead `gisbase = 'gitbase_of_your_machine'`*
 
 ### Usage
 #### Segmentation
@@ -41,25 +49,25 @@ opt_name = 'segments_1219-998'
 bands = [1, 2, 3, 4]
 grassbin = '/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh'  # for Mac
 gisbase = '/Applications/GRASS-7.8.app/Contents/Resources'  # for Mac
-n_iter = 3 # number of interation for iteratioanl mean-shift filter
-max_window = 5 # maximum window size for mean-shift filter
-window_size_thred = 101 # window size of local threshold calculation to skeletonize edges.
-method = 'separate' # method of segmentation using two season images.
-ram = 16 # RAM size for usage
-threshold = 0.2 # similarity threshold for segment growing.
-similarity = "manhattan" # method to calculate similarity.
-minsize = 10 # minimum segment size
-iterations = 200 # iteration number for segmentation. Too small value might cause uncoverage.
-vectorize = True # option to get vector polygons for segments. Otherwise, just keep the categorical raster.
-simplify_thred = 3.0 # threshold for vector simplification.
-keep = False # option to keep intermid results or not.
+n_iter = 3  # number of iteration for mean-shift filter
+max_window = 5  # maximum window size for mean-shift filter
+window_size_thred = 101  # window size of local threshold calculation to skeletonize edges.
+method = 'separate'  # method of segmentation using two season images.
+ram = 16  # RAM size for usage
+threshold = 0.2  # similarity threshold for segment growing.
+similarity = "manhattan"  # method to calculate similarity.
+minsize = 10  # minimum segment size
+iterations = 200  # iteration number for segmentation. Too small value might cause not converge.
+vectorize = True  # option to get vector polygons for segments or just keep categorical raster.
+simplify_thred = 3.0  # threshold for vector simplification.
+keep = False  # option to keep interim results or not.
 
 ehseg(img_paths=img_paths,
       dst_path=dst_path,
       opt_name=opt_name,
       bands=bands,
-      grassbin=grassbin,  # for Mac
-      gisbase=gisbase,  # for Mac
+      grassbin=grassbin,
+      gisbase=gisbase,
       n_iter=n_iter, max_window=max_window,
       window_size_thred=window_size_thred,
       method=method,
@@ -81,14 +89,14 @@ The function `revalue_segments` can resign values for each segment and/or filter
 Similarly, the user must install GRASS GIS first, and provide `GRASSBIN` and `gisbase`.
 
 ```
-segments_path = 'segments_1218-998_window7.geojson' # path of segments
-categorical_mask_path = 'probability_1218-998.tif' # path of categorical mask raster.
-dst_epsg = 4326 # destenation EPSG code
-category_filter = [0] # values in categorical mask to discard.
-thred_clean = 500 # threshold of area size to clean.
+segments_path = 'segments_1218-998_window7.geojson'  # path of segments
+categorical_mask_path = 'probability_1218-998.tif'  # path of categorical mask raster.
+dst_epsg = 4326  # destination EPSG code
+category_filter = [0]  # values in categorical mask to discard.
+thred_clean = 500  # threshold of area size to clean.
 grassbin = '/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh'  # for Mac
 gisbase = '/Applications/GRASS-7.8.app/Contents/Resources'  # for Mac
-keep = True # option to replace input segments path or not.
+keep = True  # option to replace input segments path or not.
 
 revalue_segments(segments_path=segments_path,
                  categorical_mask_path=categorical_mask_path,
@@ -99,6 +107,12 @@ revalue_segments(segments_path=segments_path,
                  gisbase=gisbase,
                  keep=keep)
 ```
+
+### Author
+
+[Lei Song](https://github.com/LLeiSong) (lsong@clarku.edu)
+
+Warmly welcome contributors to make pull request.
 
 ### Acknowledgement
 
