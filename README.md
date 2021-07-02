@@ -115,6 +115,5 @@ revalue_segments(segments_path=segments_path,
 Warmly welcome contributors to make pull request.
 
 ### Acknowledgement
-
-This package is part of project ["Combining Spatially-explicit Simulation of Animal Movement and Earth Observation to Reconcile Agriculture and Wildlife Conservation"](https://github.com/users/LLeiSong/projects/2).
-This project is funded by NASA FINESST program (award number: 80NSSC20K1640).
+The primary support for this work was provided by Omidyar Network’s Property Rights Initiative, now PLACE. 
+This package is also part of project ["Combining Spatially-explicit Simulation of Animal Movement and Earth Observation to Reconcile Agriculture and Wildlife Conservation"](https://github.com/users/LLeiSong/projects/2), which is funded by NASA FINESST program (award number: 80NSSC20K1640).
