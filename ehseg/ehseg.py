@@ -334,7 +334,7 @@ def ehseg(img_paths,
                                         input='segments',
                                         output='segments_dg',
                                         method='douglas',
-                                        threshold=5,
+                                        threshold=simplify_thred,
                                         overwrite=True)
                     gscript.run_command('v.out.ogr',
                                         input='segments_dg',
@@ -460,6 +460,7 @@ def revalue_segments(segments_path,
                      thred_clean=500,
                      grassbin='/Applications/GRASS-7.8.app/Contents/MacOS/Grass.sh',  # for Mac
                      gisbase='/Applications/GRASS-7.8.app/Contents/Resources',  # for Mac
+                     simplify_thred=0.0,
                      keep=False):
     """
     Args:
@@ -471,6 +472,9 @@ def revalue_segments(segments_path,
         thred_clean (int): threshold value in dst_epsg unit to clean the results.
         grassbin (str): the path of GRASS installation.
         gisbase (str): the gisbase path of GRASS GIS.
+        simplify_thred (float): the threshold of Douglas-Peucker Algorithm to simplify the vectorized segments.
+            If the segments will be used as interim output (e.g. get the edge of fields),
+            it is not a good idea to simplify them.
         keep (bool): the option to keep the original segments or not.
     Return:
         Save out file. Within the attribute table, b_value is the resigned value for each segment.
@@ -514,11 +518,24 @@ def revalue_segments(segments_path,
                             output='mask',
                             type='area',
                             overwrite=True)
-        gscript.run_command('v.overlay',
-                            ainput='segments',
-                            binput='mask',
-                            operator='and',
-                            output='segments_resign')
+        if simplify_thred > 0.0:
+            gscript.run_command('v.generalize',
+                                input='mask',
+                                output='mask_dg',
+                                method='douglas',
+                                threshold=simplify_thred,  # 5
+                                overwrite=True)
+            gscript.run_command('v.overlay',
+                                ainput='segments',
+                                binput='mask_dg',
+                                operator='and',
+                                output='segments_resign')
+        else:
+            gscript.run_command('v.overlay',
+                                ainput='segments',
+                                binput='mask',
+                                operator='and',
+                                output='segments_resign')
         gscript.run_command('v.clean',
                             input='segments_resign',
                             output='segments',
